@@ -1,4 +1,4 @@
-#!/usr/bin/python3.4
+#!/usr/bin/python3
 # -*- coding: utf8 -*-
 
 import sys
@@ -16,6 +16,8 @@ parser.add_argument('--hashname','-S', dest='hashname', type=str, action="store"
 parser.add_argument('--compression','-z', dest='compressor', type=str, action="store", choices=("lzma","gzip"), default="lzma", help='compression algorithm to use for deflating files')
 parser.add_argument('--ecdsasign','-e', dest='ecdsasign', action="store_const", default=False, const=True,
                    help='activate attempt to create/load ecdsa key and sign header+packaged datas with it\nPEM of key is output on stderr')
+parser.add_argument('--include-bash-executability-restorer','-X',dest='executability', action="store_const", default=False, const=True,
+                    help='include bash script restoring executability of files in the current folder ran after unpacking')
 parser.add_argument('--ecdsaprivkey','-k', dest='ecdsaprivkey', type=str, action="store", default=None, help='private ecdsa key to use for signature, a new one is generated if no specified')
 parser.add_argument('header', metavar='"header text file"', type=str, nargs=1, help='file containing text displayed as header when using unpacker without arguments')
 parser.add_argument('packedfiles', metavar='"packed file"', type=str, nargs='+',
@@ -33,7 +35,7 @@ if args.ecdsasign == True:
         ecdsasign = True
         ecdsaprivkey = args.ecdsaprivkey
         #sanity check ecdsa and optional privkey later#
-    except ImportError as e: 
+    except ImportError as e:
         sys.stderr.write("Warning : ecdsa could not be imported, deactivating it.\n")
         sys.stderr.write("          check that you have installed module from https://pypi.python.org/pypi/ecdsa\n")
         sys.stderr.write("  Error was: %s \n" % repr(e))
@@ -46,7 +48,12 @@ if integrity == True:
 else:
     sys.stderr.write("Hash computation volontarily disabled\n")
 
-modstopack = set(reduce(lambda x,y: x+y,map(lambda x: {'backports.lzma':('xlzma','xlzma._lzma'),'ecdsa':tuple()}[x],args.packmods),tuple()))
+modstopack = set(reduce(lambda x,y: x+y,map(lambda x: {'backports.lzma':('xyz_xlzma','xyz_xlzma._lzma'),'ecdsa':tuple()}[x],args.packmods),tuple()))
+
+restoreexe = args.executability
+if restoreexe == True:
+   sys.stderr.write("Executability restore bash script will be packed and launched after [<pack> unpack all]\n")
+   modstopack.add('executability')
 
 headerpath = args.header.pop()
 filestopack = args.packedfiles
@@ -62,7 +69,7 @@ base64decode = (hasattr(base64,'decodebytes') and base64.decodebytes) or (hasatt
 
 ###deviation content %1###
 ###packaged backports.lzma module###
-pkmodules={'xlzma._lzma':'''f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAYCIAAAAAAABAAAAAAAAAAEilAAAAAAAAAAAAAEAAOAAH
+pkmodules={'xyz_xlzma._lzma':'''f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAYCIAAAAAAABAAAAAAAAAAEilAAAAAAAAAAAAAEAAOAAH
 AEAAGwAYAAEAAAAFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFF4AAAAAAAAUXgAAAAAAAAAA
 IAAAAAAAAQAAAAYAAACYbQAAAAAAAJhtIAAAAAAAmG0gAAAAAAAwGwAAAAAAAFAbAAAAAAAAAAAg
 AAAAAAACAAAABgAAALBtAAAAAAAAsG0gAAAAAACwbSAAAAAAAPABAAAAAAAA8AEAAAAAAAAIAAAA
@@ -834,7 +841,15 @@ AAAAAAAAAADWAAAAAQAAADAAAAAAAAAAAAAAAAAAAADIiAAAAAAAACoAAAAAAAAAAAAAAAAAAAAB
 AAAAAAAAAAEAAAAAAAAAEQAAAAMAAAAAAAAAAAAAAAAAAAAAAAAA8ogAAAAAAADfAAAAAAAAAAAA
 AAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAACAAAAAAAAAAAAAAAAAAAAAAAAANiJAAAAAAAAgBAA
 AAAAAAAaAAAAXwAAAAgAAAAAAAAAGAAAAAAAAAAJAAAAAwAAAAAAAAAAAAAAAAAAAAAAAABYmgAA
-AAAAAOwKAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA''','xlzma':u'"""Interface to the liblzma compression library.\n\nThis module provides a class for reading and writing compressed files,\nclasses for incremental (de)compression, and convenience functions for\none-shot (de)compression.\n\nThese classes and functions support both the XZ and legacy LZMA\ncontainer formats, as well as raw compressed data streams.\n"""\n\n__all__ = [\n    "CHECK_NONE", "CHECK_CRC32", "CHECK_CRC64", "CHECK_SHA256",\n    "CHECK_ID_MAX", "CHECK_UNKNOWN",\n    "FILTER_LZMA1", "FILTER_LZMA2", "FILTER_DELTA", "FILTER_X86", "FILTER_IA64",\n    "FILTER_ARM", "FILTER_ARMTHUMB", "FILTER_POWERPC", "FILTER_SPARC",\n    "FORMAT_AUTO", "FORMAT_XZ", "FORMAT_ALONE", "FORMAT_RAW",\n    "MF_HC3", "MF_HC4", "MF_BT2", "MF_BT3", "MF_BT4",\n    "MODE_FAST", "MODE_NORMAL", "PRESET_DEFAULT", "PRESET_EXTREME",\n\n    "LZMACompressor", "LZMADecompressor", "LZMAFile", "LZMAError",\n    "open", "compress", "decompress", "is_check_supported",\n]\n\nimport io\nfrom ._lzma import *\nfrom ._lzma import _encode_filter_properties, _decode_filter_properties\n\n\n_MODE_CLOSED   = 0\n_MODE_READ     = 1\n_MODE_READ_EOF = 2\n_MODE_WRITE    = 3\n\n_BUFFER_SIZE = 8192\n\n\n__version__ = "0.0.3"\n\nclass LZMAFile(io.BufferedIOBase):\n\n    """A file object providing transparent LZMA (de)compression.\n\n    An LZMAFile can act as a wrapper for an existing file object, or\n    refer directly to a named file on disk.\n\n    Note that LZMAFile provides a *binary* file interface - data read\n    is returned as bytes, and data to be written must be given as bytes.\n    """\n\n    def __init__(self, filename=None, mode="r",\n                 format=None, check=-1, preset=None, filters=None):\n        """Open an LZMA-compressed file in binary mode.\n\n        filename can be either an actual file name (given as a str, unicode\n        or bytes object), in which case the named file is opened, or it can\n        be an existing file object to read from or write to.\n\n        mode can be "r" for reading (default), "w" for (over)writing, or\n        "a" for appending. These can equivalently be given as "rb", "wb",\n        and "ab" respectively.\n\n        format specifies the container format to use for the file.\n        If mode is "r", this defaults to FORMAT_AUTO. Otherwise, the\n        default is FORMAT_XZ.\n\n        check specifies the integrity check to use. This argument can\n        only be used when opening a file for writing. For FORMAT_XZ,\n        the default is CHECK_CRC64. FORMAT_ALONE and FORMAT_RAW do not\n        support integrity checks - for these formats, check must be\n        omitted, or be CHECK_NONE.\n\n        When opening a file for reading, the *preset* argument is not\n        meaningful, and should be omitted. The *filters* argument should\n        also be omitted, except when format is FORMAT_RAW (in which case\n        it is required).\n\n        When opening a file for writing, the settings used by the\n        compressor can be specified either as a preset compression\n        level (with the *preset* argument), or in detail as a custom\n        filter chain (with the *filters* argument). For FORMAT_XZ and\n        FORMAT_ALONE, the default is to use the PRESET_DEFAULT preset\n        level. For FORMAT_RAW, the caller must always specify a filter\n        chain; the raw compressor does not support preset compression\n        levels.\n\n        preset (if provided) should be an integer in the range 0-9,\n        optionally OR-ed with the constant PRESET_EXTREME.\n\n        filters (if provided) should be a sequence of dicts. Each dict\n        should have an entry for "id" indicating ID of the filter, plus\n        additional entries for options to the filter.\n        """\n        self._fp = None\n        self._closefp = False\n        self._mode = _MODE_CLOSED\n        self._pos = 0\n        self._size = -1\n\n        if mode in ("r", "rb"):\n            if check != -1:\n                raise ValueError("Cannot specify an integrity check "\n                                 "when opening a file for reading")\n            if preset is not None:\n                raise ValueError("Cannot specify a preset compression "\n                                 "level when opening a file for reading")\n            if format is None:\n                format = FORMAT_AUTO\n            mode_code = _MODE_READ\n            # Save the args to pass to the LZMADecompressor initializer.\n            # If the file contains multiple compressed streams, each\n            # stream will need a separate decompressor object.\n            self._init_args = {"format":format, "filters":filters}\n            self._decompressor = LZMADecompressor(**self._init_args)\n            self._buffer = None\n        elif mode in ("w", "wb", "a", "ab"):\n            if format is None:\n                format = FORMAT_XZ\n            mode_code = _MODE_WRITE\n            self._compressor = LZMACompressor(format=format, check=check,\n                                              preset=preset, filters=filters)\n        else:\n            raise ValueError("Invalid mode: {!r}".format(mode))\n\n        if hasattr(filename, "read") or hasattr(filename, "write"):\n            self._fp = filename\n            self._mode = mode_code\n        else:\n            if "b" not in mode:\n                mode += "b"\n            self._fp = io.open(filename, mode)\n            self._closefp = True\n            self._mode = mode_code\n\n    def close(self):\n        """Flush and close the file.\n\n        May be called more than once without error. Once the file is\n        closed, any other operation on it will raise a ValueError.\n        """\n        if self._mode == _MODE_CLOSED:\n            return\n        try:\n            if self._mode in (_MODE_READ, _MODE_READ_EOF):\n                self._decompressor = None\n                self._buffer = None\n            elif self._mode == _MODE_WRITE:\n                self._fp.write(self._compressor.flush())\n                self._compressor = None\n        finally:\n            try:\n                if self._closefp:\n                    self._fp.close()\n            finally:\n                self._fp = None\n                self._closefp = False\n                self._mode = _MODE_CLOSED\n\n    @property\n    def closed(self):\n        """True if this file is closed."""\n        return self._mode == _MODE_CLOSED\n\n    def fileno(self):\n        """Return the file descriptor for the underlying file."""\n        self._check_not_closed()\n        return self._fp.fileno()\n\n    def seekable(self):\n        """Return whether the file supports seeking."""\n        return self.readable() and self._fp.seekable()\n\n    def readable(self):\n        """Return whether the file was opened for reading."""\n        self._check_not_closed()\n        return self._mode in (_MODE_READ, _MODE_READ_EOF)\n\n    def writable(self):\n        """Return whether the file was opened for writing."""\n        self._check_not_closed()\n        return self._mode == _MODE_WRITE\n\n    # Mode-checking helper functions.\n\n    def _check_not_closed(self):\n        if self.closed:\n            raise ValueError("I/O operation on closed file")\n\n    def _check_can_read(self):\n        if not self.readable():\n            raise io.UnsupportedOperation("File not open for reading")\n\n    def _check_can_write(self):\n        if not self.writable():\n            raise io.UnsupportedOperation("File not open for writing")\n\n    def _check_can_seek(self):\n        if not self.readable():\n            raise io.UnsupportedOperation("Seeking is only supported "\n                                          "on files open for reading")\n        if not self._fp.seekable():\n            raise io.UnsupportedOperation("The underlying file object "\n                                          "does not support seeking")\n\n    # Fill the readahead buffer if it is empty. Returns False on EOF.\n    def _fill_buffer(self):\n        # Depending on the input data, our call to the decompressor may not\n        # return any data. In this case, try again after reading another block.\n        while True:\n            if self._buffer:\n                return True\n\n            if self._decompressor.unused_data:\n                rawblock = self._decompressor.unused_data\n            else:\n                rawblock = self._fp.read(_BUFFER_SIZE)\n\n            if not rawblock:\n                if self._decompressor.eof:\n                    self._mode = _MODE_READ_EOF\n                    self._size = self._pos\n                    return False\n                else:\n                    raise EOFError("Compressed file ended before the "\n                                   "end-of-stream marker was reached")\n\n            # Continue to next stream.\n            if self._decompressor.eof:\n                self._decompressor = LZMADecompressor(**self._init_args)\n\n            self._buffer = self._decompressor.decompress(rawblock)\n\n    # Read data until EOF.\n    # If return_data is false, consume the data without returning it.\n    def _read_all(self, return_data=True):\n        blocks = []\n        while self._fill_buffer():\n            if return_data:\n                blocks.append(self._buffer)\n            self._pos += len(self._buffer)\n            self._buffer = None\n        if return_data:\n            return b"".join(blocks)\n\n    # Read a block of up to n bytes.\n    # If return_data is false, consume the data without returning it.\n    def _read_block(self, n, return_data=True):\n        blocks = []\n        while n > 0 and self._fill_buffer():\n            if n < len(self._buffer):\n                data = self._buffer[:n]\n                self._buffer = self._buffer[n:]\n            else:\n                data = self._buffer\n                self._buffer = None\n            if return_data:\n                blocks.append(data)\n            self._pos += len(data)\n            n -= len(data)\n        if return_data:\n            return b"".join(blocks)\n\n    def peek(self, size=-1):\n        """Return buffered data without advancing the file position.\n\n        Always returns at least one byte of data, unless at EOF.\n        The exact number of bytes returned is unspecified.\n        """\n        self._check_can_read()\n        if self._mode == _MODE_READ_EOF or not self._fill_buffer():\n            return b""\n        return self._buffer\n\n    def read(self, size=-1):\n        """Read up to size uncompressed bytes from the file.\n\n        If size is negative or omitted, read until EOF is reached.\n        Returns b"" if the file is already at EOF.\n        """\n        self._check_can_read()\n        if size is None:\n            #This is not needed on Python 3 where the comparison to zeo\n            #will fail with a TypeError.\n            raise TypeError("Read size should be an integer, not None")\n        if self._mode == _MODE_READ_EOF or size == 0:\n            return b""\n        elif size < 0:\n            return self._read_all()\n        else:\n            return self._read_block(size)\n\n    def read1(self, size=-1):\n        """Read up to size uncompressed bytes, while trying to avoid\n        making multiple reads from the underlying stream.\n\n        Returns b"" if the file is at EOF.\n        """\n        # Usually, read1() calls _fp.read() at most once. However, sometimes\n        # this does not give enough data for the decompressor to make progress.\n        # In this case we make multiple reads, to avoid returning b"".\n        self._check_can_read()\n        if size is None:\n            #This is not needed on Python 3 where the comparison to zero\n            #will fail with a TypeError. \n            raise TypeError("Read size should be an integer, not None")\n        if (size == 0 or self._mode == _MODE_READ_EOF or\n            not self._fill_buffer()):\n            return b""\n        if 0 < size < len(self._buffer):\n            data = self._buffer[:size]\n            self._buffer = self._buffer[size:]\n        else:\n            data = self._buffer\n            self._buffer = None\n        self._pos += len(data)\n        return data\n\n    def write(self, data):\n        """Write a bytes object to the file.\n\n        Returns the number of uncompressed bytes written, which is\n        always len(data). Note that due to buffering, the file on disk\n        may not reflect the data written until close() is called.\n        """\n        self._check_can_write()\n        compressed = self._compressor.compress(data)\n        self._fp.write(compressed)\n        self._pos += len(data)\n        return len(data)\n\n    # Rewind the file to the beginning of the data stream.\n    def _rewind(self):\n        self._fp.seek(0, 0)\n        self._mode = _MODE_READ\n        self._pos = 0\n        self._decompressor = LZMADecompressor(**self._init_args)\n        self._buffer = None\n\n    def seek(self, offset, whence=0):\n        """Change the file position.\n\n        The new position is specified by offset, relative to the\n        position indicated by whence. Possible values for whence are:\n\n            0: start of stream (default): offset must not be negative\n            1: current stream position\n            2: end of stream; offset must not be positive\n\n        Returns the new file position.\n\n        Note that seeking is emulated, sp depending on the parameters,\n        this operation may be extremely slow.\n        """\n        self._check_can_seek()\n\n        # Recalculate offset as an absolute file position.\n        if whence == 0:\n            pass\n        elif whence == 1:\n            offset = self._pos + offset\n        elif whence == 2:\n            # Seeking relative to EOF - we need to know the file\'s size.\n            if self._size < 0:\n                self._read_all(return_data=False)\n            offset = self._size + offset\n        else:\n            raise ValueError("Invalid value for whence: {}".format(whence))\n\n        # Make it so that offset is the number of bytes to skip forward.\n        if offset is None:\n            #This is not needed on Python 3 where the comparison to self._pos\n            #will fail with a TypeError.\n            raise TypeError("Seek offset should be an integer, not None")\n        if offset < self._pos:\n            self._rewind()\n        else:\n            offset -= self._pos\n\n        # Read and discard data until we reach the desired position.\n        if self._mode != _MODE_READ_EOF:\n            self._read_block(offset, return_data=False)\n\n        return self._pos\n\n    def tell(self):\n        """Return the current file position."""\n        self._check_not_closed()\n        return self._pos\n\n\ndef open(filename, mode="rb",\n         format=None, check=-1, preset=None, filters=None,\n         encoding=None, errors=None, newline=None):\n    """Open an LZMA-compressed file in binary or text mode.\n\n    filename can be either an actual file name (given as a str or bytes object),\n    in which case the named file is opened, or it can be an existing file object\n    to read from or write to.\n\n    The mode argument can be "r", "rb" (default), "w", "wb", "a", or "ab" for\n    binary mode, or "rt", "wt" or "at" for text mode.\n\n    The format, check, preset and filters arguments specify the compression\n    settings, as for LZMACompressor, LZMADecompressor and LZMAFile.\n\n    For binary mode, this function is equivalent to the LZMAFile constructor:\n    LZMAFile(filename, mode, ...). In this case, the encoding, errors and\n    newline arguments must not be provided.\n\n    For text mode, a LZMAFile object is created, and wrapped in an\n    io.TextIOWrapper instance with the specified encoding, error handling\n    behavior, and line ending(s).\n\n    """\n    if "t" in mode:\n        if "b" in mode:\n            raise ValueError("Invalid mode: %r" % (mode,))\n    else:\n        if encoding is not None:\n            raise ValueError("Argument \'encoding\' not supported in binary mode")\n        if errors is not None:\n            raise ValueError("Argument \'errors\' not supported in binary mode")\n        if newline is not None:\n            raise ValueError("Argument \'newline\' not supported in binary mode")\n\n    lz_mode = mode.replace("t", "")\n    binary_file = LZMAFile(filename, lz_mode, format=format, check=check,\n                           preset=preset, filters=filters)\n\n    if "t" in mode:\n        return io.TextIOWrapper(binary_file, encoding, errors, newline)\n    else:\n        return binary_file\n\n\ndef compress(data, format=FORMAT_XZ, check=-1, preset=None, filters=None):\n    """Compress a block of data.\n\n    Refer to LZMACompressor\'s docstring for a description of the\n    optional arguments *format*, *check*, *preset* and *filters*.\n\n    For incremental compression, use an LZMACompressor object instead.\n    """\n    comp = LZMACompressor(format, check, preset, filters)\n    return comp.compress(data) + comp.flush()\n\n\ndef decompress(data, format=FORMAT_AUTO, memlimit=None, filters=None):\n    """Decompress a block of data.\n\n    Refer to LZMADecompressor\'s docstring for a description of the\n    optional arguments *format*, *check* and *filters*.\n\n    For incremental decompression, use a LZMADecompressor object instead.\n    """\n    results = []\n    while True:\n        decomp = LZMADecompressor(format, memlimit, filters)\n        results.append(decomp.decompress(data))\n        if not decomp.eof:\n            raise LZMAError("Compressed data ended before the "\n                            "end-of-stream marker was reached")\n        if not decomp.unused_data:\n            return b"".join(results)\n        # There is unused data left over. Proceed to next stream.\n        data = decomp.unused_data\n'}
+AAAAAOwKAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA''',
+'xyz_xlzma':u'"""Interface to the liblzma compression library.\n\nThis module provides a class for reading and writing compressed files,\nclasses for incremental (de)compression, and convenience functions for\none-shot (de)compression.\n\nThese classes and functions support both the XZ and legacy LZMA\ncontainer formats, as well as raw compressed data streams.\n"""\n\n__all__ = [\n    "CHECK_NONE", "CHECK_CRC32", "CHECK_CRC64", "CHECK_SHA256",\n    "CHECK_ID_MAX", "CHECK_UNKNOWN",\n    "FILTER_LZMA1", "FILTER_LZMA2", "FILTER_DELTA", "FILTER_X86", "FILTER_IA64",\n    "FILTER_ARM", "FILTER_ARMTHUMB", "FILTER_POWERPC", "FILTER_SPARC",\n    "FORMAT_AUTO", "FORMAT_XZ", "FORMAT_ALONE", "FORMAT_RAW",\n    "MF_HC3", "MF_HC4", "MF_BT2", "MF_BT3", "MF_BT4",\n    "MODE_FAST", "MODE_NORMAL", "PRESET_DEFAULT", "PRESET_EXTREME",\n\n    "LZMACompressor", "LZMADecompressor", "LZMAFile", "LZMAError",\n    "open", "compress", "decompress", "is_check_supported",\n]\n\nimport io\nfrom ._lzma import *\nfrom ._lzma import _encode_filter_properties, _decode_filter_properties\n\n\n_MODE_CLOSED   = 0\n_MODE_READ     = 1\n_MODE_READ_EOF = 2\n_MODE_WRITE    = 3\n\n_BUFFER_SIZE = 8192\n\n\n__version__ = "0.0.3"\n\nclass LZMAFile(io.BufferedIOBase):\n\n    """A file object providing transparent LZMA (de)compression.\n\n    An LZMAFile can act as a wrapper for an existing file object, or\n    refer directly to a named file on disk.\n\n    Note that LZMAFile provides a *binary* file interface - data read\n    is returned as bytes, and data to be written must be given as bytes.\n    """\n\n    def __init__(self, filename=None, mode="r",\n                 format=None, check=-1, preset=None, filters=None):\n        """Open an LZMA-compressed file in binary mode.\n\n        filename can be either an actual file name (given as a str, unicode\n        or bytes object), in which case the named file is opened, or it can\n        be an existing file object to read from or write to.\n\n        mode can be "r" for reading (default), "w" for (over)writing, or\n        "a" for appending. These can equivalently be given as "rb", "wb",\n        and "ab" respectively.\n\n        format specifies the container format to use for the file.\n        If mode is "r", this defaults to FORMAT_AUTO. Otherwise, the\n        default is FORMAT_XZ.\n\n        check specifies the integrity check to use. This argument can\n        only be used when opening a file for writing. For FORMAT_XZ,\n        the default is CHECK_CRC64. FORMAT_ALONE and FORMAT_RAW do not\n        support integrity checks - for these formats, check must be\n        omitted, or be CHECK_NONE.\n\n        When opening a file for reading, the *preset* argument is not\n        meaningful, and should be omitted. The *filters* argument should\n        also be omitted, except when format is FORMAT_RAW (in which case\n        it is required).\n\n        When opening a file for writing, the settings used by the\n        compressor can be specified either as a preset compression\n        level (with the *preset* argument), or in detail as a custom\n        filter chain (with the *filters* argument). For FORMAT_XZ and\n        FORMAT_ALONE, the default is to use the PRESET_DEFAULT preset\n        level. For FORMAT_RAW, the caller must always specify a filter\n        chain; the raw compressor does not support preset compression\n        levels.\n\n        preset (if provided) should be an integer in the range 0-9,\n        optionally OR-ed with the constant PRESET_EXTREME.\n\n        filters (if provided) should be a sequence of dicts. Each dict\n        should have an entry for "id" indicating ID of the filter, plus\n        additional entries for options to the filter.\n        """\n        self._fp = None\n        self._closefp = False\n        self._mode = _MODE_CLOSED\n        self._pos = 0\n        self._size = -1\n\n        if mode in ("r", "rb"):\n            if check != -1:\n                raise ValueError("Cannot specify an integrity check "\n                                 "when opening a file for reading")\n            if preset is not None:\n                raise ValueError("Cannot specify a preset compression "\n                                 "level when opening a file for reading")\n            if format is None:\n                format = FORMAT_AUTO\n            mode_code = _MODE_READ\n            # Save the args to pass to the LZMADecompressor initializer.\n            # If the file contains multiple compressed streams, each\n            # stream will need a separate decompressor object.\n            self._init_args = {"format":format, "filters":filters}\n            self._decompressor = LZMADecompressor(**self._init_args)\n            self._buffer = None\n        elif mode in ("w", "wb", "a", "ab"):\n            if format is None:\n                format = FORMAT_XZ\n            mode_code = _MODE_WRITE\n            self._compressor = LZMACompressor(format=format, check=check,\n                                              preset=preset, filters=filters)\n        else:\n            raise ValueError("Invalid mode: {!r}".format(mode))\n\n        if hasattr(filename, "read") or hasattr(filename, "write"):\n            self._fp = filename\n            self._mode = mode_code\n        else:\n            if "b" not in mode:\n                mode += "b"\n            self._fp = io.open(filename, mode)\n            self._closefp = True\n            self._mode = mode_code\n\n    def close(self):\n        """Flush and close the file.\n\n        May be called more than once without error. Once the file is\n        closed, any other operation on it will raise a ValueError.\n        """\n        if self._mode == _MODE_CLOSED:\n            return\n        try:\n            if self._mode in (_MODE_READ, _MODE_READ_EOF):\n                self._decompressor = None\n                self._buffer = None\n            elif self._mode == _MODE_WRITE:\n                self._fp.write(self._compressor.flush())\n                self._compressor = None\n        finally:\n            try:\n                if self._closefp:\n                    self._fp.close()\n            finally:\n                self._fp = None\n                self._closefp = False\n                self._mode = _MODE_CLOSED\n\n    @property\n    def closed(self):\n        """True if this file is closed."""\n        return self._mode == _MODE_CLOSED\n\n    def fileno(self):\n        """Return the file descriptor for the underlying file."""\n        self._check_not_closed()\n        return self._fp.fileno()\n\n    def seekable(self):\n        """Return whether the file supports seeking."""\n        return self.readable() and self._fp.seekable()\n\n    def readable(self):\n        """Return whether the file was opened for reading."""\n        self._check_not_closed()\n        return self._mode in (_MODE_READ, _MODE_READ_EOF)\n\n    def writable(self):\n        """Return whether the file was opened for writing."""\n        self._check_not_closed()\n        return self._mode == _MODE_WRITE\n\n    # Mode-checking helper functions.\n\n    def _check_not_closed(self):\n        if self.closed:\n            raise ValueError("I/O operation on closed file")\n\n    def _check_can_read(self):\n        if not self.readable():\n            raise io.UnsupportedOperation("File not open for reading")\n\n    def _check_can_write(self):\n        if not self.writable():\n            raise io.UnsupportedOperation("File not open for writing")\n\n    def _check_can_seek(self):\n        if not self.readable():\n            raise io.UnsupportedOperation("Seeking is only supported "\n                                          "on files open for reading")\n        if not self._fp.seekable():\n            raise io.UnsupportedOperation("The underlying file object "\n                                          "does not support seeking")\n\n    # Fill the readahead buffer if it is empty. Returns False on EOF.\n    def _fill_buffer(self):\n        # Depending on the input data, our call to the decompressor may not\n        # return any data. In this case, try again after reading another block.\n        while True:\n            if self._buffer:\n                return True\n\n            if self._decompressor.unused_data:\n                rawblock = self._decompressor.unused_data\n            else:\n                rawblock = self._fp.read(_BUFFER_SIZE)\n\n            if not rawblock:\n                if self._decompressor.eof:\n                    self._mode = _MODE_READ_EOF\n                    self._size = self._pos\n                    return False\n                else:\n                    raise EOFError("Compressed file ended before the "\n                                   "end-of-stream marker was reached")\n\n            # Continue to next stream.\n            if self._decompressor.eof:\n                self._decompressor = LZMADecompressor(**self._init_args)\n\n            self._buffer = self._decompressor.decompress(rawblock)\n\n    # Read data until EOF.\n    # If return_data is false, consume the data without returning it.\n    def _read_all(self, return_data=True):\n        blocks = []\n        while self._fill_buffer():\n            if return_data:\n                blocks.append(self._buffer)\n            self._pos += len(self._buffer)\n            self._buffer = None\n        if return_data:\n            return b"".join(blocks)\n\n    # Read a block of up to n bytes.\n    # If return_data is false, consume the data without returning it.\n    def _read_block(self, n, return_data=True):\n        blocks = []\n        while n > 0 and self._fill_buffer():\n            if n < len(self._buffer):\n                data = self._buffer[:n]\n                self._buffer = self._buffer[n:]\n            else:\n                data = self._buffer\n                self._buffer = None\n            if return_data:\n                blocks.append(data)\n            self._pos += len(data)\n            n -= len(data)\n        if return_data:\n            return b"".join(blocks)\n\n    def peek(self, size=-1):\n        """Return buffered data without advancing the file position.\n\n        Always returns at least one byte of data, unless at EOF.\n        The exact number of bytes returned is unspecified.\n        """\n        self._check_can_read()\n        if self._mode == _MODE_READ_EOF or not self._fill_buffer():\n            return b""\n        return self._buffer\n\n    def read(self, size=-1):\n        """Read up to size uncompressed bytes from the file.\n\n        If size is negative or omitted, read until EOF is reached.\n        Returns b"" if the file is already at EOF.\n        """\n        self._check_can_read()\n        if size is None:\n            #This is not needed on Python 3 where the comparison to zeo\n            #will fail with a TypeError.\n            raise TypeError("Read size should be an integer, not None")\n        if self._mode == _MODE_READ_EOF or size == 0:\n            return b""\n        elif size < 0:\n            return self._read_all()\n        else:\n            return self._read_block(size)\n\n    def read1(self, size=-1):\n        """Read up to size uncompressed bytes, while trying to avoid\n        making multiple reads from the underlying stream.\n\n        Returns b"" if the file is at EOF.\n        """\n        # Usually, read1() calls _fp.read() at most once. However, sometimes\n        # this does not give enough data for the decompressor to make progress.\n        # In this case we make multiple reads, to avoid returning b"".\n        self._check_can_read()\n        if size is None:\n            #This is not needed on Python 3 where the comparison to zero\n            #will fail with a TypeError. \n            raise TypeError("Read size should be an integer, not None")\n        if (size == 0 or self._mode == _MODE_READ_EOF or\n            not self._fill_buffer()):\n            return b""\n        if 0 < size < len(self._buffer):\n            data = self._buffer[:size]\n            self._buffer = self._buffer[size:]\n        else:\n            data = self._buffer\n            self._buffer = None\n        self._pos += len(data)\n        return data\n\n    def write(self, data):\n        """Write a bytes object to the file.\n\n        Returns the number of uncompressed bytes written, which is\n        always len(data). Note that due to buffering, the file on disk\n        may not reflect the data written until close() is called.\n        """\n        self._check_can_write()\n        compressed = self._compressor.compress(data)\n        self._fp.write(compressed)\n        self._pos += len(data)\n        return len(data)\n\n    # Rewind the file to the beginning of the data stream.\n    def _rewind(self):\n        self._fp.seek(0, 0)\n        self._mode = _MODE_READ\n        self._pos = 0\n        self._decompressor = LZMADecompressor(**self._init_args)\n        self._buffer = None\n\n    def seek(self, offset, whence=0):\n        """Change the file position.\n\n        The new position is specified by offset, relative to the\n        position indicated by whence. Possible values for whence are:\n\n            0: start of stream (default): offset must not be negative\n            1: current stream position\n            2: end of stream; offset must not be positive\n\n        Returns the new file position.\n\n        Note that seeking is emulated, sp depending on the parameters,\n        this operation may be extremely slow.\n        """\n        self._check_can_seek()\n\n        # Recalculate offset as an absolute file position.\n        if whence == 0:\n            pass\n        elif whence == 1:\n            offset = self._pos + offset\n        elif whence == 2:\n            # Seeking relative to EOF - we need to know the file\'s size.\n            if self._size < 0:\n                self._read_all(return_data=False)\n            offset = self._size + offset\n        else:\n            raise ValueError("Invalid value for whence: {}".format(whence))\n\n        # Make it so that offset is the number of bytes to skip forward.\n        if offset is None:\n            #This is not needed on Python 3 where the comparison to self._pos\n            #will fail with a TypeError.\n            raise TypeError("Seek offset should be an integer, not None")\n        if offset < self._pos:\n            self._rewind()\n        else:\n            offset -= self._pos\n\n        # Read and discard data until we reach the desired position.\n        if self._mode != _MODE_READ_EOF:\n            self._read_block(offset, return_data=False)\n\n        return self._pos\n\n    def tell(self):\n        """Return the current file position."""\n        self._check_not_closed()\n        return self._pos\n\n\ndef open(filename, mode="rb",\n         format=None, check=-1, preset=None, filters=None,\n         encoding=None, errors=None, newline=None):\n    """Open an LZMA-compressed file in binary or text mode.\n\n    filename can be either an actual file name (given as a str or bytes object),\n    in which case the named file is opened, or it can be an existing file object\n    to read from or write to.\n\n    The mode argument can be "r", "rb" (default), "w", "wb", "a", or "ab" for\n    binary mode, or "rt", "wt" or "at" for text mode.\n\n    The format, check, preset and filters arguments specify the compression\n    settings, as for LZMACompressor, LZMADecompressor and LZMAFile.\n\n    For binary mode, this function is equivalent to the LZMAFile constructor:\n    LZMAFile(filename, mode, ...). In this case, the encoding, errors and\n    newline arguments must not be provided.\n\n    For text mode, a LZMAFile object is created, and wrapped in an\n    io.TextIOWrapper instance with the specified encoding, error handling\n    behavior, and line ending(s).\n\n    """\n    if "t" in mode:\n        if "b" in mode:\n            raise ValueError("Invalid mode: %r" % (mode,))\n    else:\n        if encoding is not None:\n            raise ValueError("Argument \'encoding\' not supported in binary mode")\n        if errors is not None:\n            raise ValueError("Argument \'errors\' not supported in binary mode")\n        if newline is not None:\n            raise ValueError("Argument \'newline\' not supported in binary mode")\n\n    lz_mode = mode.replace("t", "")\n    binary_file = LZMAFile(filename, lz_mode, format=format, check=check,\n                           preset=preset, filters=filters)\n\n    if "t" in mode:\n        return io.TextIOWrapper(binary_file, encoding, errors, newline)\n    else:\n        return binary_file\n\n\ndef compress(data, format=FORMAT_XZ, check=-1, preset=None, filters=None):\n    """Compress a block of data.\n\n    Refer to LZMACompressor\'s docstring for a description of the\n    optional arguments *format*, *check*, *preset* and *filters*.\n\n    For incremental compression, use an LZMACompressor object instead.\n    """\n    comp = LZMACompressor(format, check, preset, filters)\n    return comp.compress(data) + comp.flush()\n\n\ndef decompress(data, format=FORMAT_AUTO, memlimit=None, filters=None):\n    """Decompress a block of data.\n\n    Refer to LZMADecompressor\'s docstring for a description of the\n    optional arguments *format*, *check* and *filters*.\n\n    For incremental decompression, use a LZMADecompressor object instead.\n    """\n    results = []\n    while True:\n        decomp = LZMADecompressor(format, memlimit, filters)\n        results.append(decomp.decompress(data))\n        if not decomp.eof:\n            raise LZMAError("Compressed data ended before the "\n                            "end-of-stream marker was reached")\n        if not decomp.unused_data:\n            return b"".join(results)\n        # There is unused data left over. Proceed to next stream.\n        data = decomp.unused_data\n',
+'executability':'''XQAAAAT//////////wARiEJGPfQYaqZnr3qfcBgzGF2JkT8FOOvOUHSRpXftBF2LrNrLKze8nRRu
+XFfYxmAOsV0/V+IfFZtQTJnyXDvmf4xjpgMJAqpm3wGO4gr0LBFzH59+NZPGwvPlNZlJBRP69CMd
+FMBg1FklKXmyMKO6KrXz3xrHYT+icVU1bsjTIcGvRsnQ+XDaRonsOtYcnfy0bfyeZLmRQnomYH7B
+ZD2mRUfIdXanIAhrsiXtTdrXEZQ4jKFLVVQ5Zf4zMgW1hdOdMgb+jBQfgsGFXTH65QGdQFWVFjWx
+FEIyqrH417kdB8irzA3lgRy8LupWpKgm/O10CwsEJEoqzzknBpD3lGkLQ2eeGDrxpJWA4whpgB6X
+NKw4tkq2OVJQCGlhlbgIrz/ioleaBLsIHo9a+uCc9xcZW5c7JNl0d9I1EjRvY4nYUZnHgtyR/Dvd
+kw=='''}
 
 if args.compressor == "lzma":
     try:
@@ -849,7 +864,7 @@ if args.compressor == "lzma":
                 ###deviation content %2###
                 ###import code intended to run on ~python2.7 only###
                 import imp
-                
+
                 # from http://stackoverflow.com/questions/14191900/pythonimport-module-from-memory
                 # and slightly modified to get it working...
                 class StringImporter(object):
@@ -862,7 +877,7 @@ if args.compressor == "lzma":
                     def load_module(self, fullname):
                         if not fullname in self._modules.keys():
                             raise ImportError(fullname)
-                        if fullname == "xlzma._lzma":
+                        if fullname == "xyz_xlzma._lzma":
                             pointer = base64decode(self._modules[fullname].encode('utf8'))
                             with open('/tmp/_pypack_hyeneticsXpy27XbackportsX_lzma.so','wb') as f:
                                 f.write(pointer)
@@ -871,7 +886,7 @@ if args.compressor == "lzma":
                             sys.modules[fullname] = mod
                             return mod
                         new_module = imp.new_module(fullname)
-                        new_module.__package__={'xlzma':'xlzma'}[fullname]
+                        new_module.__package__={'xyz_xlzma':'xyz_xlzma'}[fullname]
                         new_module.__path__ = ['.']
                         sys.modules[fullname] = new_module
                         pointer = self._modules[fullname]
@@ -881,13 +896,13 @@ if args.compressor == "lzma":
                         except Exception as e:
                             del sys.modules[fullname]
                             raise e
-                
+
                 if __name__ == '__main__': sys.meta_path.append(StringImporter(pkmodules))
-                import xlzma as lzma
+                import xyz_xlzma as lzma
                 if not lzma.decompress(lzma.compress(b'test')) == b'test':
                     raise ImportError('lzma seems broken')
-                sys.stderr.write("Imported fallback xlzma module (backports.lzma + _lzma.so included in this script)\n")
-            
+                sys.stderr.write("Imported fallback xyz_xlzma module (backports.lzma + _lzma.so included in this script)\n")
+
             except Exception as eee:
                 sys.stderr.write('lzma import failed + backports.lzma import failed + import packaged version of backports.lzma failed. cannot go forward\n')
                 exit()
@@ -980,29 +995,37 @@ try:
         if not pkmodule in vpkmods:
             sys.stderr.write("skipping module file %s\n" % pkmodule)
             del pkmodules[pkmodule]
-            continue            
-        if pkmodule in ['xlzma._lzma','xlzma']:
+            continue
+        if pkmodule in ['xyz_xlzma._lzma','xyz_xlzma']:
             sys.stderr.write("packing backports.lzma part %s ... unfortunatly, obviously not LZMA compressible\n" % pkmodule)
             pkmodules[repr(pkmodule)] = repr(pkmodules[pkmodule])
             del pkmodules[pkmodule]
             if integrity:
-                if pkmodule == 'xlzma._lzma':
+                if pkmodule == 'xyz_xlzma._lzma':
                     rawchksum = hashgen(base64decode(pkmodules[repr(pkmodule)].encode('utf8'))).hexdigest()
                 else:
                     rawchksum = hashgen(pkmodules[repr(pkmodule)].encode('utf8')).hexdigest()
                 sys.stderr.write("i-- %s : %s = %s \n" % (pkmodule,hashname,rawchksum))
-                if pkmodule == 'xlzma._lzma':
+                if pkmodule == 'xyz_xlzma._lzma':
                     b64chksum = hashgen(pkmodules[repr(pkmodule)].encode('utf8').strip()).hexdigest()
                 else:
                     b64chksum = hashgen(base64encode(pkmodules[repr(pkmodule)].encode('utf8').strip())).hexdigest()
                 sys.stderr.write("**i %s : %s = %s \n" % (pkmodule,hashname,b64chksum))
-                hashmap[repr(pkmodule)] = (repr(rawchksum),repr(b64chksum))            
+                hashmap[repr(pkmodule)] = (repr(rawchksum),repr(b64chksum))
             continue
-        pfilekey = repr(pkmodule)
-        pfilepath = 'python module %s' % pkmodule
+        if pkmodule in ['executability']:
+            try:
+               pkmodules[pkmodule] = decompressor(base64decode(pkmodules[pkmodule].encode('utf8'))).decode('utf8')
+            except Exception as e:
+               sys.stderr.write('error with additional module internal decompression : %s : %s\n' % (e.__class__,e))
+               sys.stderr.write('%s will not be included!\n' % pkmodule)
+               del pkmodules[pkmodule]
+               continue
+        pfilekey = repr('____'+str(pkmodule))
+        pfilepath = 'packer module %s' % pkmodule
         sys.stderr.write("packing additional %s\n" % pfilepath)
-        #if pkmodule == 'xlzma._lzma':
-        #    pfiledata = ephemeral(base64decode(pkmodules['xlzma._lzma'].encode('utf8')))
+        #if pkmodule == 'xyz_xlzma._lzma':
+        #    pfiledata = ephemeral(base64decode(pkmodules['xyz_xlzma._lzma'].encode('utf8')))
         #
         #else:
         pfiledata = ephemeral(pkmodules[pkmodule].encode('utf8'))
@@ -1011,7 +1034,7 @@ try:
         factorpack(pfilepath,pfilekey,pfiledata,pkmodule=True)
 except Exception as e:
         sys.stderr.write('\n')
-        sys.stderr.write('halt: %s : %s\n' % (e.__class__,e))
+        sys.stderr.write('pkmodule halt: %s : %s\n' % (e.__class__,e))
         exit()
 
 pkmodulesstring = ''
@@ -1099,7 +1122,7 @@ except ImportError as e:
     except ImportError as ee:
         try:
             import imp
-            
+
             class StringImporter(object):
                 def __init__(self, modules):
                     self._modules = dict(modules)
@@ -1110,7 +1133,7 @@ except ImportError as e:
                 def load_module(self, fullname):
                     if not fullname in self._modules.keys():
                         raise ImportError(fullname)
-                    if fullname == "xlzma._lzma":
+                    if fullname == "xyz_xlzma._lzma":
                         pointer = base64decode(self._modules[fullname].encode('utf8'))
                         with open('/tmp/_pypack_hyeneticsXpy27XbackportsX_lzma.so','wb') as f:
                             f.write(pointer)
@@ -1119,7 +1142,7 @@ except ImportError as e:
                         sys.modules[fullname] = mod
                         return mod
                     new_module = imp.new_module(fullname)
-                    new_module.__package__={'xlzma':'xlzma'}[fullname]
+                    new_module.__package__={'xyz_xlzma':'xyz_xlzma'}[fullname]
                     new_module.__path__ = ['.']
                     sys.modules[fullname] = new_module
                     pointer = self._modules[fullname]
@@ -1129,19 +1152,17 @@ except ImportError as e:
                     except Exception as e:
                         del sys.modules[fullname]
                         raise e
-            
+
             if __name__ == '__main__': sys.meta_path.append(StringImporter(pkmodules))
-            import xlzma as lzma
+            import xyz_xlzma as lzma
             if not lzma.decompress(lzma.compress(b'test')) == b'test':
                 raise ImportError('lzma seems broken')
-            sys.stderr.write("Imported fallback xlzma module (backports.lzma + _lzma.so included in this script)\\n")
-        
+            sys.stderr.write("Imported fallback xyz_xlzma module (backports.lzma + _lzma.so included in this script)\\n")
+
         except Exception as eee:
             sys.stderr.write(repr(eee)+"\\n")
             sys.stderr.write('lzma import failed + backports.lzma import failed + import packaged version of backports.lzma failed. cannot go forward\\n')
             exit()
-            
-del pkmodules
 
 ~HASH1~
 
@@ -1204,6 +1225,7 @@ else:
         else:
             sys.stderr.write('this line should never be executed, but some files already exists\\n')
             exit()
+        ~~RSTEXE~~
     elif sys.argv[1] in list(package.keys()):
         if unpack(sys.argv[1]):
             if not sys.stdout.isatty():
@@ -1224,7 +1246,7 @@ else:
         for pfile in package.keys():
             sys.stderr.write(' |  %%s  %%s\\n' %% (sys.argv[0], pfile))
         exit()
-''' 
+'''
 
 if integrity:
     chksumtp = lambda m: {'~HASH0~':'hashmap={%s}' % hashstring,
@@ -1266,5 +1288,21 @@ else:
 
 outfile = pytemplate % (header,packagestring,pkmodulesstring)
 outfile = re.sub("~HASH[0-9]+~",chksumtp,outfile)
+
+if restoreexe:
+    rstexe = '''rstexe=lzma.decompress(base64decode(pkmodules['____executability'].encode('utf8')),format=lzma.FORMAT_ALONE)
+        with open('/tmp/hxhxhyeneticsunpacker_restoreexecutability.sh',mode='wb') as f:
+             f.write(rstexe)
+             f.flush()
+        del rstexe
+        sys.stderr.write('\\\\nLaunching BASH script to restore eXecutability of executable files in this directory (so ... targeting unpacked files)\\\\n')
+        if os.system('/bin/bash /tmp/hxhxhyeneticsunpacker_restoreexecutability.sh') != 0:
+          sys.stderr.write('There was an error with executability restorer script !\\\\n')
+        else:
+          sys.stderr.write('Script called succesfully in %s\\\\n' % str(os.getcwd()) )'''
+else:
+    rstexe = '#not included bash script to optimistic restore executability of unpacked files#'
+
+outfile = re.sub("~~RSTEXE~~",rstexe,outfile)
 
 print(outfile)

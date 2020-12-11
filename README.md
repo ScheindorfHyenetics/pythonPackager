@@ -2,7 +2,21 @@ Python program running with python 2 or 3, able to take an header text file and 
 and then output on stdout a fully functional python script containing the choosen files lzma compressed and base64 encoded;
 and the required script to manage unpacking one or all files from it.
 
+ECDSA signature is currently mainly NOT IMPLEMENTED. 
+Everything is just placeholders for signing archive and verify the token at decompression. Nothing is actually done.
 
+Gzip compression is NOT IMPLEMENTED. Option is just a placeholder yet.
+
+Everything else is working. 
+
+-Can run exactly the same with python2 or python3
+-Can load lzma library packed along an archive on the fly if unpacker's python doesn't have it
+-Unpacked filed integrity is checked again sha512 hash
+
+sample.py is packer.py file archived with himself.
+packer.py is the packaging software
+
+---
 
 usage: packer.py [-h] [--packmodule {backports.lzma,ecdsa}] [--nointegrity]
 
@@ -80,11 +94,6 @@ hyena tmp # python pack.py
 Imported lzma module (python3.4 standard lib)
 
 magnifique paquet que je vous sers la
-
-
-
-
-
 
 to unpack one of these files enter :
 
